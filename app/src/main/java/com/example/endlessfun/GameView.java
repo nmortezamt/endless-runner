@@ -24,6 +24,9 @@ public class GameView extends View implements Runnable {
     private boolean isPlaying = true;
     private boolean isGameOver = false;
 
+    private boolean isPaused = false;
+
+
     // Player
     private float playerX, playerY;
     private float velocityY = 0;
@@ -167,7 +170,7 @@ public class GameView extends View implements Runnable {
     }
 
     private void update() {
-        if (isGameOver) return;
+        if (isGameOver || isPaused) return;
 
         // Difficulty scaling
         if (score >= lastDifficultyScore + 5) {
@@ -305,5 +308,19 @@ public class GameView extends View implements Runnable {
         super.onDetachedFromWindow();
         soundPool.release();
     }
+
+    public void pauseGame() {
+        isPaused = true;
+    }
+
+    public void resumeGame() {
+        isPaused = false;
+    }
+
+    public boolean isPaused() {
+        return isPaused;
+    }
+
+
 }
 

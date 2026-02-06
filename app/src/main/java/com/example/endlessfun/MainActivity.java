@@ -20,11 +20,23 @@ public class MainActivity extends AppCompatActivity {
 
         GameView gameView = findViewById(R.id.gameView);
         Button startButton = findViewById(R.id.startButton);
+        Button pauseButton = findViewById(R.id.pauseButton);
 
         startButton.setOnClickListener(v -> {
             gameView.startGame();        // start the game
             startButton.setVisibility(View.GONE);
             // hide button
+        });
+
+
+        pauseButton.setOnClickListener(v -> {
+            if (gameView.isPaused()) {
+                gameView.resumeGame();
+                pauseButton.setText("Pause");
+            } else {
+                gameView.pauseGame();
+                pauseButton.setText("Resume");
+            }
         });
     }
 }
