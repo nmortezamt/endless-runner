@@ -1,3 +1,28 @@
 <resources>
     <string name="app_name">endlessfun</string>
+    <string name="game_title">Endless Fun</string>
+    <string name="play">Play</string>
+    <string name="best_score_format">Best: %d</string>
+    <string name="best_loading">Best: …</string>
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="medal_best">Best score medal</string>
+    <string name="back">Back</string>
+    <string name="birds_and_background">Birds &amp; Background</string>
+    <string name="select_bird">Select bird</string>
+    <string name="select_background">Select background</string>
+    <string name="bird_icon">Bird</string>
+    <string name="selected">Selected</string>
+    <string name="unlock_at">Unlock at score %d</string>
+    <string name="bird_default">Default</string>
+    <string name="bird_red">Red bird</string>
+    <string name="bird_blue">Blue bird</string>
+    <string name="bird_yellow">Yellow bird</string>
+    <string name="bird_green">Green bird</string>
+    <string name="bg_cream">Cream</string>
+    <string name="bg_sky">Sky</string>
+    <string name="bg_grass">Grass</string>
+    <string name="bg_sunset">Sunset</string>
+    <string name="bg_night">Night</string>
+    <string name="change_background">Change background</string>
 </resources>

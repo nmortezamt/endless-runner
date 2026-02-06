@@ -2,4 +2,15 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="game_background">#FFF5E6</color>
+    <color name="pipe_color">#2E7D32</color>
+    <color name="pipe_border">#1B5E20</color>
+    <color name="hud_bg">#CC000000</color>
+    <color name="game_over_overlay">#CC000000</color>
+    <!-- Selectable backgrounds -->
+    <color name="bg_cream">#FFF5E6</color>
+    <color name="bg_sky">#E3F2FD</color>
+    <color name="bg_grass">#E8F5E9</color>
+    <color name="bg_sunset">#FFE0B2</color>
+    <color name="bg_night">#263238</color>
 </resources>
