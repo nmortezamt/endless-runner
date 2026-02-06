@@ -37,8 +37,8 @@ public class GameView extends View implements Runnable {
     // Player
     private float playerX, playerY;
     private float velocityY = 0;
-    private final float gravity = 2.0f;
-    private final float jumpForce = -30;
+    private final float gravity = 1.5f;
+    private final float jumpForce = -23;
 
     // Bitmaps
     private Bitmap playerBitmap;
