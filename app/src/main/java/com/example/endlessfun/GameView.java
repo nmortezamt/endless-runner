@@ -30,15 +30,18 @@ public class GameView extends View implements Runnable {
     private Thread gameThread;
     private boolean isPlaying = true;
     private boolean isGameOver = false;
-
     private boolean isPaused = false;
 
+    // Get Ready countdown (3, 2, 1, Go) — no physics/spawn until done
+    private boolean isCountdownActive = false;
+    private int countdownFramesLeft = 0;
+    private static final int COUNTDOWN_FRAMES_PER_NUMBER = 25;
 
     // Player
     private float playerX, playerY;
     private float velocityY = 0;
-    private final float gravity = 1.5f;
-    private final float jumpForce = -23;
+    private final float gravity = 1.2f;
+    private final float jumpForce = -18;
 
     // Bitmaps
     private Bitmap playerBitmap;
@@ -51,27 +54,75 @@ public class GameView extends View implements Runnable {
     private int gapHeight = 300;
     private int lastDifficultyScore = 0;
 
+    // Lives (jones) per round: hit obstacle = lose one; 3 hits = game over
+    private static final int LIVES_MAX = 3;
+    private int lives = LIVES_MAX;
+    private int invincibleFramesLeft = 0;  // brief invincibility after hit so one pipe doesn't take multiple lives
+    private static final int INVINCIBLE_FRAMES_AFTER_HIT = 45;
+
     // Medal thresholds (score >= value)
     private static final int MEDAL_BRONZE = 10;
     private static final int MEDAL_SILVER = 25;
     private static final int MEDAL_GOLD = 50;
     private static final int MEDAL_PLATINUM = 100;
 
-    // Obstacles
+    // Obstacles (normal + moving-gap variant)
+    private static final float MOVING_GAP_SPEED = 2.2f;
+    private static final float MOVING_GAP_CHANCE = 0.35f;  // chance after first 2 pipes
+    private static final int SOFTER_START_PIPES = 3;       // first N pipes: wider gap, slower
+
     private class ObstaclePair {
         RectF topRect;
         RectF bottomRect;
         boolean passed = false;
+        boolean movingGap;
+        float obstX;
+        float obstWidth;
+        float gapCenterY;
+        float gapHeightThis;
+        float gapVelocityY;
 
-        ObstaclePair(float x, float gapTop) {
-            float width = getWidth() / 8f;  // 1/8 of screen width
-            topRect = new RectF(x, 0, x + width, gapTop);
-            bottomRect = new RectF(x, gapTop + gapHeight, x + width, getHeight());
+        float speedMult = 1f;  // softer start: first few pipes move slower
+
+        ObstaclePair(float x, float gapTop, float gapH, boolean moving, boolean softerStart) {
+            float width = getWidth() / 8f;
+            obstX = x;
+            obstWidth = width;
+            gapHeightThis = gapH;
+            movingGap = moving;
+            speedMult = softerStart ? 0.85f : 1f;
+            if (moving) {
+                gapCenterY = gapTop + gapH / 2f;
+                gapVelocityY = (random.nextBoolean() ? 1 : -1) * MOVING_GAP_SPEED;
+                topRect = new RectF(x, 0, x + width, gapCenterY - gapH / 2f);
+                bottomRect = new RectF(x, gapCenterY + gapH / 2f, x + width, getHeight());
+            } else {
+                topRect = new RectF(x, 0, x + width, gapTop);
+                bottomRect = new RectF(x, gapTop + gapH, x + width, getHeight());
+            }
         }
 
         void update() {
-            topRect.offset(-obstacleSpeed, 0);
-            bottomRect.offset(-obstacleSpeed, 0);
+            float speed = obstacleSpeed * speedMult;
+            obstX -= speed;
+            if (movingGap) {
+                gapCenterY += gapVelocityY;
+                float minCenter = 180 + gapHeightThis / 2f;
+                float maxCenter = getHeight() - 180 - gapHeightThis / 2f;
+                if (gapCenterY <= minCenter) {
+                    gapCenterY = minCenter;
+                    gapVelocityY = -gapVelocityY;
+                }
+                if (gapCenterY >= maxCenter) {
+                    gapCenterY = maxCenter;
+                    gapVelocityY = -gapVelocityY;
+                }
+                topRect.set(obstX, 0, obstX + obstWidth, gapCenterY - gapHeightThis / 2f);
+                bottomRect.set(obstX, gapCenterY + gapHeightThis / 2f, obstX + obstWidth, getHeight());
+            } else {
+                topRect.offset(-speed, 0);
+                bottomRect.offset(-speed, 0);
+            }
         }
     }
 
@@ -92,19 +143,19 @@ public class GameView extends View implements Runnable {
 
     // Bird tint colors (index 0 = no filter)
     private static final int[] BIRD_TINT_COLORS = {
-        0,           // 0 = no tint (use 0 to skip filter)
-        Color.parseColor("#E53935"), // 1 red
-        Color.parseColor("#1E88E5"), // 2 blue
-        Color.parseColor("#FDD835"), // 3 yellow
-        Color.parseColor("#43A047"), // 4 green
+            0,           // 0 = no tint (use 0 to skip filter)
+            Color.parseColor("#E53935"), // 1 red
+            Color.parseColor("#1E88E5"), // 2 blue
+            Color.parseColor("#FDD835"), // 3 yellow
+            Color.parseColor("#43A047"), // 4 green
     };
 
     private static final int[] BACKGROUND_COLOR_IDS = {
-        R.color.bg_cream,
-        R.color.bg_sky,
-        R.color.bg_grass,
-        R.color.bg_sunset,
-        R.color.bg_night,
+            R.color.bg_cream,
+            R.color.bg_sky,
+            R.color.bg_grass,
+            R.color.bg_sunset,
+            R.color.bg_night,
     };
 
     // Sound
@@ -169,7 +220,6 @@ public class GameView extends View implements Runnable {
     }
 
     public void startGame() {
-        // Start the game thread if not already running
         if (gameThread == null || !gameThread.isAlive()) {
             isPlaying = true;
             isGameOver = false;
@@ -181,12 +231,15 @@ public class GameView extends View implements Runnable {
             spawnDelay = 90;
             lastDifficultyScore = 0;
             gapHeight = playerBitmap.getHeight() * 3;
+            lives = LIVES_MAX;
+            invincibleFramesLeft = 0;
+            isCountdownActive = true;
+            countdownFramesLeft = 4 * COUNTDOWN_FRAMES_PER_NUMBER;
 
             gameThread = new Thread(this);
             gameThread.start();
         }
     }
-
 
     private void resetGame() {
         obstacles.clear();
@@ -197,9 +250,11 @@ public class GameView extends View implements Runnable {
         lastDifficultyScore = 0;
         isGameOver = false;
         playerY = getHeight() / 2f;
-
-        // recalc gap height based on player size
         gapHeight = playerBitmap.getHeight() * 3;
+        lives = LIVES_MAX;
+        invincibleFramesLeft = 0;
+        isCountdownActive = true;
+        countdownFramesLeft = 4 * COUNTDOWN_FRAMES_PER_NUMBER;
     }
 
 
@@ -215,6 +270,13 @@ public class GameView extends View implements Runnable {
     private void update() {
         if (isGameOver || isPaused) return;
 
+        // Get Ready countdown: no physics or spawn until done
+        if (isCountdownActive) {
+            countdownFramesLeft--;
+            if (countdownFramesLeft <= 0) isCountdownActive = false;
+            return;
+        }
+
         // Difficulty scaling: every DIFFICULTY_INTERVAL points, game gets harder
         if (score >= lastDifficultyScore + DIFFICULTY_INTERVAL) {
             obstacleSpeed += 0.3f;
@@ -223,21 +285,35 @@ public class GameView extends View implements Runnable {
             lastDifficultyScore = score;
         }
 
+        // Invincibility after hit (so one pipe doesn't take multiple lives)
+        if (invincibleFramesLeft > 0) invincibleFramesLeft--;
+
         // Physics
         velocityY += gravity;
         playerY += velocityY;
 
-        if (playerY > getHeight() - playerBitmap.getHeight() / 2f) {
-            onGameOver();
+        // Ceiling: bird cannot go above top of screen (so it can't fly over obstacles)
+        float minY = playerBitmap.getHeight() / 2f;
+        if (playerY < minY) {
+            playerY = minY;
+            velocityY = Math.max(0, velocityY);
         }
 
-        // Spawn pipes
+        if (playerY > getHeight() - playerBitmap.getHeight() / 2f) {
+            onGameOver();  // floor death — play hit sound in onGameOver
+        }
+
+        // Spawn pipes (softer start: first SOFTER_START_PIPES have wider gap + slower; then chance of moving gap)
         spawnTimer++;
         if (spawnTimer > spawnDelay) {
+            boolean softer = score < SOFTER_START_PIPES;
+            float gapH = softer ? gapHeight * 1.3f : gapHeight;
+            boolean moving = !softer && random.nextFloat() < MOVING_GAP_CHANCE;
             float minTop = 200;
-            float maxTop = getHeight() - gapHeight - 200;
+            float maxTop = getHeight() - gapH - 200;
+            if (maxTop <= minTop) maxTop = minTop + 100;
             float gapTop = minTop + random.nextFloat() * (maxTop - minTop);
-            obstacles.add(new ObstaclePair(getWidth(), gapTop));
+            obstacles.add(new ObstaclePair(getWidth(), gapTop, gapH, moving, softer));
             spawnTimer = 0;
         }
 
@@ -257,8 +333,8 @@ public class GameView extends View implements Runnable {
                 o.passed = true;
                 score++;
                 soundPool.play(scoreSound, 1, 1, 1, 0, 1);
-                // Update high score in real time when reaching or beating record
-                if (score >= highScore) {
+                // Update high score only when we beat the record (not when we tie)
+                if (score > highScore) {
                     // Play win sound only once per run: when we first beat the record we started with (e.g. 10 → 11)
                     if (initialHighScore > 0 && score == initialHighScore + 1) {
                         soundPool.play(winSound, 1, 1, 1, 0, 1);
@@ -275,7 +351,9 @@ public class GameView extends View implements Runnable {
                 }
             }
 
-            // Collision
+            // Collision (skip while invincible after a hit)
+            if (invincibleFramesLeft > 0) continue;
+
             float padding = 10; // 10px buffer to make collisions forgiving
             RectF playerRect = new RectF(
                     playerX - playerBitmap.getWidth() / 2f + padding,
@@ -284,18 +362,28 @@ public class GameView extends View implements Runnable {
                     playerY + playerBitmap.getHeight() / 2f - padding
             );
 
-
             if (RectF.intersects(playerRect, o.topRect) ||
                     RectF.intersects(playerRect, o.bottomRect)) {
-                onGameOver();
+                lives--;
+                soundPool.play(hitSound, 1, 1, 1, 0, 1);
+                it.remove();  // remove this obstacle so we don't lose multiple lives from one pipe
+                invincibleFramesLeft = INVINCIBLE_FRAMES_AFTER_HIT;
+                if (lives <= 0) {
+                    onGameOver(true);  // already played hit sound above
+                }
+                break;  // only one hit per frame
             }
         }
     }
 
     private void onGameOver() {
+        onGameOver(false);
+    }
+
+    private void onGameOver(boolean fromObstacle) {
         if (isGameOver) return;
         isGameOver = true;
-        soundPool.play(hitSound, 1, 1, 1, 0, 1);
+        if (!fromObstacle) soundPool.play(hitSound, 1, 1, 1, 0, 1);  // floor death; obstacle death already played
         // High score is already updated in real time when passing obstacles
     }
 
@@ -339,27 +427,45 @@ public class GameView extends View implements Runnable {
         );
         paint.setColorFilter(null);
 
-        // HUD with background (Score, Best + medal)
+        // Get Ready countdown overlay (3, 2, 1, Go!)
+        if (isCountdownActive && countdownFramesLeft > 0) {
+            int phase = (countdownFramesLeft - 1) / COUNTDOWN_FRAMES_PER_NUMBER;
+            String[] labels = { "Go!", "1", "2", "3" };
+            String msg = phase < labels.length ? labels[phase] : "3";
+            paint.setColor(Color.WHITE);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setTextSize(96);
+            paint.setShadowLayer(8f, 0, 0, Color.BLACK);
+            canvas.drawText(msg, getWidth() / 2f, getHeight() / 2f + 30f, paint);
+            paint.setShadowLayer(0, 0, 0, 0);
+            paint.setTextAlign(Paint.Align.LEFT);
+        }
+
+        // HUD with background (Score, Best + medal, Lives)
         float hudTop = 24;
         float hudLeft = 24;
         paint.setTextSize(44);
         paint.setColor(Color.WHITE);
         String scoreStr = "Score: " + score;
         String highStr = "Best: " + highScore;
+        String livesStr = "Lives: " + lives;
         Rect scoreBounds = new Rect();
         Rect highBounds = new Rect();
+        Rect livesBounds = new Rect();
         paint.getTextBounds(scoreStr, 0, scoreStr.length(), scoreBounds);
         paint.getTextBounds(highStr, 0, highStr.length(), highBounds);
+        paint.getTextBounds(livesStr, 0, livesStr.length(), livesBounds);
         float pad = 16f;
         float lineH = scoreBounds.height() + 8;
         float medalSize = 36f;
-        float boxRight = hudLeft + Math.max(scoreBounds.width(), highBounds.width() + medalSize + 8) + pad * 2;
-        float boxBottom = hudTop + lineH * 2 + pad * 2;
+        float boxRight = hudLeft + Math.max(scoreBounds.width(), Math.max(highBounds.width() + medalSize + 8, livesBounds.width())) + pad * 2;
+        float boxBottom = hudTop + lineH * 3 + pad * 2;
         paint.setColor(getResources().getColor(R.color.hud_bg, null));
         canvas.drawRoundRect(hudLeft, hudTop, boxRight, boxBottom, 12, 12, paint);
         paint.setColor(Color.WHITE);
         canvas.drawText(scoreStr, hudLeft + pad, hudTop + pad + scoreBounds.height(), paint);
         canvas.drawText(highStr, hudLeft + pad, hudTop + pad + scoreBounds.height() + lineH, paint);
+        canvas.drawText(livesStr, hudLeft + pad, hudTop + pad + scoreBounds.height() + lineH * 2, paint);
         // Medal next to Best when current score earns one
         int medalId = getMedalDrawableId(score);
         if (medalId != 0) {
@@ -394,7 +500,7 @@ public class GameView extends View implements Runnable {
             float padz = 40f;
             changeBackgroundBounds.set(cx - changeBgBounds.width() / 2f - padz, changeBgY - changeBgBounds.height() - 8,
                     cx + changeBgBounds.width() / 2f + padz, changeBgY + 8);
-            if (score > 0 && score >= initialHighScore) {
+            if (score > initialHighScore) {
                 paint.setTextSize(32);
                 paint.setColor(0xFFFFFF00);
                 canvas.drawText("New record!", cx, cy + 100, paint);
@@ -428,7 +534,7 @@ public class GameView extends View implements Runnable {
                 } else {
                     resetGame();
                 }
-            } else {
+            } else if (!isCountdownActive) {
                 velocityY = jumpForce;
                 soundPool.play(jumpSound, 1, 1, 1, 0, 1);
             }
